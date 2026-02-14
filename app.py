@@ -1,35 +1,51 @@
 import os
-from flask import Flask, request
 import requests
+from flask import Flask
+import time
+import threading
 
 app = Flask(__name__)
 
 TOKEN = os.environ.get("TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
-def send_message(chat_id, text):
+BUY_LEVEL = 70000   # عدل الرقم
+SELL_LEVEL = 60000  # عدل الرقم
+
+def get_price():
+    url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+    response = requests.get(url)
+    data = response.json()
+    return float(data["price"])
+
+def send_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, json={
-        "chat_id": chat_id,
+        "chat_id": CHAT_ID,
         "text": text
     })
 
-@app.route("/", methods=["POST"])
-def webhook():
-    data = request.get_json()
+def price_checker():
+    while True:
+        try:
+            price = get_price()
 
-    if data and "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
+            if price >= BUY_LEVEL:
+                send_message(f"🔥 إشارة شراء بيتكوين\nالسعر الحالي: {price}")
 
-        if text == "/start":
-            send_message(chat_id, "🔥 شغال 100%")
+            elif price <= SELL_LEVEL:
+                send_message(f"🔻 إشارة بيع بيتكوين\nالسعر الحالي: {price}")
 
-    return "OK", 200
+        except Exception as e:
+            print("Error:", e)
 
-@app.route("/", methods=["GET"])
+        time.sleep(60)  # يفحص كل دقيقة
+
+@app.route("/")
 def home():
     return "Bot Running", 200
 
-
 if __name__ == "__main__":
+    thread = threading.Thread(target=price_checker)
+    thread.start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
