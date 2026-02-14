@@ -1,68 +1,41 @@
 import os
 import requests
-from flask import Flask, request
+import time
 
-app = Flask(__name__)
+TOKEN = os.getenv("TOKEN")
+BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
-TOKEN = os.environ.get("TOKEN")
-TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
+print("Bot started with polling...")
 
-# ارسال رسالة
-def send_message(chat_id, text):
-    url = f"{TELEGRAM_API}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
-    requests.post(url, json=payload)
+last_update_id = None
 
-# الصفحة الرئيسية
-@app.route("/")
-def home():
-    return "BTC Bot Running"
+while True:
+    try:
+        url = f"{BASE_URL}/getUpdates?timeout=30"
+        if last_update_id:
+            url += f"&offset={last_update_id + 1}"
 
-# استقبال التحديثات من تيليجرام
-@app.route("/", methods=["POST"])
-def webhook():
-    data = request.get_json()
+        response = requests.get(url).json()
 
-    if "channel_post" in data:
-        message = data["channel_post"]
-        chat_id = message["chat"]["id"]
-        text = message.get("text", "").lower()
+        if response["ok"]:
+            for update in response["result"]:
+                last_update_id = update["update_id"]
 
-        # ترحيب تلقائي
-        if text == "/start":
-            welcome = """
-🔥 أهلاً بكم في بوت عاقل بس مرجوج
+                if "message" in update:
+                    chat_id = update["message"]["chat"]["id"]
+                    text = update["message"].get("text", "")
 
-✈️ نرجو منكم ربط الأحزمة
+                    reply_text = f"🔥 البوت شغال\n\nأرسلت: {text}"
 
-⚠️ للتنبيه: هذا لا يعد توصية استثمارية
-"""
-            send_message(chat_id, welcome)
+                    requests.post(
+                        f"{BASE_URL}/sendMessage",
+                        json={
+                            "chat_id": chat_id,
+                            "text": reply_text
+                        }
+                    )
 
-        # شرط ارسال عقد بيتكوين
-        if text == "btc":
+    except Exception as e:
+        print("Error:", e)
 
-            contract = f"""
-📊 BTC SIGNAL
-
-🟢 BUY
-
-💰 Entry: 52000
-🎯 TP1: 52300
-🎯 TP2: 52600
-
-🚀 عقد جاهز للتنفيذ
-⚠️ إدارة رأس المال مسؤوليتك
-"""
-
-            send_message(chat_id, contract)
-
-    return "ok"
-
-# تشغيل السيرفر
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    time.sleep(1)
