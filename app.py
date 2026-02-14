@@ -7,56 +7,56 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-BUY_LEVEL = 70000
-SELL_LEVEL = 60000
+BUY_LEVEL = 100000
+SELL_LEVEL = 90000
+
 
 def get_price():
     url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
     data = requests.get(url).json()
     return float(data["price"])
 
-def send_message(chat_id, text):
+
+def send_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, json={
-        "chat_id": chat_id,
+        "chat_id": CHAT_ID,
         "text": text
     })
 
-def check_conditions(chat_id):
+
+def check_conditions():
     price = get_price()
 
     if price >= BUY_LEVEL:
-        send_message(chat_id, f"🔥 إشارة شراء بيتكوين\nالسعر الحالي: {price}")
+        send_message(f"🔥 إشارة شراء بيتكوين\nالسعر الحالي: {price}")
+
     elif price <= SELL_LEVEL:
-        send_message(chat_id, f"🔻 إشارة بيع بيتكوين\nالسعر الحالي: {price}")
+        send_message(f"🔻 إشارة بيع بيتكوين\nالسعر الحالي: {price}")
+
     else:
-        send_message(chat_id, f"السعر الحالي {price} — لا توجد إشارة حالياً")
+        send_message(f"ℹ️ لا توجد إشارة حالياً\nالسعر الحالي: {price}")
 
-@app.route("/", methods=["POST"])
+
+@app.route("/", methods=["POST", "GET"])
 def webhook():
-    data = request.get_json()
+    if request.method == "POST":
+        data = request.get_json()
 
-    if not data:
+        if data and "message" in data:
+            chat_id = data["message"]["chat"]["id"]
+            text = data["message"].get("text", "")
+
+            if text == "/start":
+                send_message("🔥 بوت بيتكوين شغال بنجاح")
+
+            if text == "فحص":
+                check_conditions()
+
         return "OK", 200
 
-    # يدعم القروبات + القنوات + الخاص
-    message = (
-        data.get("message") or
-        data.get("channel_post") or
-        data.get("edited_message")
-    )
+    return "Bot Running", 200
 
-    if message:
-        chat_id = message["chat"]["id"]
-        text = message.get("text", "")
-
-        if text == "/start":
-            send_message(chat_id, "🔥 بوت بيتكوين شغال")
-
-        if text == "فحص":
-            check_conditions(chat_id)
-
-    return "OK", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
