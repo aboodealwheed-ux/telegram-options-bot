@@ -1,112 +1,62 @@
 import os
 import requests
-import time
-import threading
-from flask import Flask
-import telebot
+from flask import Flask, request
 
-TOKEN = os.environ.get("TOKEN")
-bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-CHAT_ID = None
-last_signal = None
+TOKEN = os.environ.get("TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
-# ====== جلب بيانات BTC ======
-def get_data():
-    url = "https://api.binance.com/api/v3/klines"
-    params = {
-        "symbol": "BTCUSDT",
-        "interval": "1m",
-        "limit": 120
-    }
-    data = requests.get(url, params=params).json()
-    closes = [float(candle[4]) for candle in data]
-    highs = [float(candle[2]) for candle in data]
-    lows = [float(candle[3]) for candle in data]
-    return closes, highs, lows
+# ========== إعدادات بيتكوين ==========
+SYMBOL = "BTCUSDT"
+TIMEFRAME = "1h"
+INTERVAL = 60
 
-# ====== حساب الزوايا ======
-def calculate_angles(high, low):
-    orbit = high - low
-    return {
-        "0": low,
-        "45": low + orbit * 0.25,
-        "90": low + orbit * 0.50,
-        "135": low + orbit * 0.75,
-        "180": high
-    }
+# مثال شروط بسيطة (نعدلها بعدين لزواياك)
+BUY_LEVEL = 60000
+SELL_LEVEL = 55000
 
-# ====== منطق الإشارة ======
-def check_signal():
-    global CHAT_ID, last_signal
+# =====================================
 
-    while True:
-        try:
-            if CHAT_ID is None:
-                time.sleep(10)
-                continue
+def get_price():
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={SYMBOL}"
+    data = requests.get(url).json()
+    return float(data["price"])
 
-            closes, highs, lows = get_data()
-            current = closes[-1]
-            high = max(highs)
-            low = min(lows)
+def send_message(text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": CHAT_ID,
+        "text": text
+    })
 
-            angles = calculate_angles(high, low)
+def check_conditions():
+    price = get_price()
 
-            # شراء
-            if current > angles["135"] and last_signal != "BUY":
-                message = f"""🚀 إشارة شراء BTC
+    if price >= BUY_LEVEL:
+        send_message(f"🔥 إشارة شراء بيتكوين\nالسعر الحالي: {price}")
 
-السعر: {current}
-كسر زاوية 135°
-مدار نشط صاعد
+    elif price <= SELL_LEVEL:
+        send_message(f"🔻 إشارة بيع بيتكوين\nالسعر الحالي: {price}")
 
-🔥 دخول شراء"""
-                bot.send_message(CHAT_ID, message)
-                last_signal = "BUY"
+@app.route("/", methods=["POST", "GET"])
+def webhook():
+    if request.method == "POST":
+        data = request.get_json()
+        if data and "message" in data:
+            text = data["message"].get("text", "")
 
-            # بيع
-            elif current < angles["45"] and last_signal != "SELL":
-                message = f"""🔻 إشارة بيع BTC
+            if text == "/start":
+                send_message("🔥 بوت بيتكوين شغال بنجاح")
 
-السعر: {current}
-كسر زاوية 45°
-مدار نشط هابط
+            if text == "فحص":
+                check_conditions()
+                send_message("تم فحص الشروط")
 
-🔥 دخول بيع"""
-                bot.send_message(CHAT_ID, message)
-                last_signal = "SELL"
+        return "OK", 200
 
-        except Exception as e:
-            print("Error:", e)
+    return "Bot Running", 200
 
-        time.sleep(60)
-
-# ====== ترحيب ======
-@bot.message_handler(commands=['start'])
-def start(message):
-    global CHAT_ID
-    CHAT_ID = message.chat.id
-
-    bot.send_message(message.chat.id,
-"""🔥 أهلاً بكم في بوت عاقل بس مرجوج
-
-🧭 يعمل بنموذج الزوايا والمدارات
-📊 يراقب BTCUSDT
-⚠️ هذا لا يعد توصية استثمارية
-
-تم تفعيل الرصد المداري...""")
-
-# ====== تشغيل ======
-def run_bot():
-    bot.infinity_polling()
-
-@app.route("/", methods=["GET"])
-def home():
-    return "BTC ORBIT BOT RUNNING"
 
 if __name__ == "__main__":
-    threading.Thread(target=check_signal).start()
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
