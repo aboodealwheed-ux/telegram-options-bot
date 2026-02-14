@@ -7,26 +7,26 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-def send_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": text
-    }
-    requests.post(url, data=data)
-
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return "Bot Running"
 
-@app.route("/", methods=["POST"])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    data = request.json
+    data = request.get_json()
 
     if "message" in data:
-        text = data["message"].get("text", "")
+        text = data["message"].get("text")
+        chat_id = data["message"]["chat"]["id"]
 
-        if text == "/start":
-            send_message("البوت شغال ✅")
+        # رد في الخاص
+        if str(chat_id) != str(CHAT_ID):
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": f"وصلت الرسالة: {text}"
+                }
+            )
 
-    return "ok"
+    return "ok", 200
