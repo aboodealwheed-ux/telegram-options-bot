@@ -15,18 +15,21 @@ def home():
 def webhook():
     data = request.get_json()
 
+    # إذا جت رسالة في الخاص
     if "message" in data:
         text = data["message"].get("text")
-        chat_id = data["message"]["chat"]["id"]
 
-        # رد في الخاص
-        if str(chat_id) != str(CHAT_ID):
+        # إذا كتب فحص
+        if text == "فحص":
             requests.post(
                 f"https://api.telegram.org/bot{TOKEN}/sendMessage",
                 json={
-                    "chat_id": chat_id,
-                    "text": f"وصلت الرسالة: {text}"
+                    "chat_id": CHAT_ID,
+                    "text": "🚀 إشعار صفقة تجريبي"
                 }
             )
 
-    return "ok", 200
+    return "ok"
+
+if __name__ == "__main__":
+    app.run()
