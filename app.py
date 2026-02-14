@@ -1,42 +1,39 @@
-from flask import Flask, request
-import requests
 import os
+import requests
+from flask import Flask, request
 
 app = Flask(__name__)
 
 TOKEN = os.environ.get("TOKEN")
+TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# للتأكد أن السيرفر شغال
-@app.route("/", methods=["GET"])
-def home():
-    return "Bot Running"
 
-# هذا هو Webhook الذي يستقبل رسائل تيليجرام
+def send_message(chat_id, text):
+    requests.post(TELEGRAM_URL, json={
+        "chat_id": chat_id,
+        "text": text
+    })
+
+
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
 
-    if not data:
-        return "no data"
-
-    # إذا كانت رسالة عادية
     if "message" in data:
-        message = data["message"]
-        chat_id = message["chat"]["id"]
-        text = message.get("text", "")
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
 
-        # رد بسيط للتجربة
-        reply = f"وصلت الرسالة: {text}"
+        # رد في الخاص
+        if text == "/start":
+            send_message(chat_id, "🔥 البوت شغال وجاهز!")
 
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": reply
-            }
-        )
+        # رد في القروب
+        elif "فحص" in text:
+            send_message(chat_id, "✅ تم الفحص — البوت يعمل في القروب!")
 
-    return "ok"
+    return "OK"
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot Running"
