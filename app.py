@@ -1,22 +1,16 @@
-from flask import Flask, request
+from flask import Flask
 import requests
 import os
 
 app = Flask(__name__)
 
-TOKEN = "8028407647:AAF_lwuVMq2l1oPo27MyDesjG27M5-vPhP8"
-CHANNEL_ID = "-1003790525302"
+TOKEN = os.environ.get("TOKEN")
+CHANNEL_ID = os.environ.get("CHAT_ID")
 
 @app.route('/')
 def home():
     return "Bot Running"
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.json
-    return "ok"
-
-# دالة لإرسال صفقة
 def send_signal(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {
@@ -24,6 +18,11 @@ def send_signal(text):
         "text": text
     }
     requests.post(url, json=payload)
+
+# رسالة تجريبية عند تشغيل السيرفر
+@app.before_first_request
+def startup_message():
+    send_signal("🚀 البوت اشتغل بنجاح!")
 
 if __name__ == "__main__":
     app.run()
