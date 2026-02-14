@@ -5,10 +5,10 @@ from flask import Flask, request
 app = Flask(__name__)
 
 TOKEN = os.environ.get("TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
 
-BUY_LEVEL = 70000      # عدل المستوى
-SELL_LEVEL = 65000     # عدل المستوى
+# مستويات تجريبية
+BUY_LEVEL = 70000
+SELL_LEVEL = 60000
 
 
 # =========================
@@ -21,12 +21,12 @@ def get_price():
 
 
 # =========================
-# إرسال رسالة
+# ارسال رسالة
 # =========================
-def send_message(text):
+def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, json={
-        "chat_id": CHAT_ID,
+        "chat_id": chat_id,
         "text": text
     })
 
@@ -34,14 +34,17 @@ def send_message(text):
 # =========================
 # فحص الشروط
 # =========================
-def check_conditions():
+def check_conditions(chat_id):
     price = get_price()
 
     if price >= BUY_LEVEL:
-        send_message(f"🔥 إشارة شراء بيتكوين\nالسعر الحالي: {price}")
+        send_message(chat_id, f"🔥 إشارة شراء بيتكوين\nالسعر الحالي: {price}")
 
     elif price <= SELL_LEVEL:
-        send_message(f"🔻 إشارة بيع بيتكوين\nالسعر الحالي: {price}")
+        send_message(chat_id, f"🔻 إشارة بيع بيتكوين\nالسعر الحالي: {price}")
+
+    else:
+        send_message(chat_id, f"⏳ لا توجد إشارة حالياً\nالسعر: {price}")
 
 
 # =========================
@@ -54,14 +57,15 @@ def webhook():
         data = request.get_json()
 
         if data and "message" in data:
+
             text = data["message"].get("text", "")
+            chat_id = data["message"]["chat"]["id"]
 
             if text == "/start":
-                send_message("🔥 بوت بيتكوين شغال بنجاح")
+                send_message(chat_id, "🔥 بوت بيتكوين شغال بنجاح")
 
-            if text == "فحص":
-                check_conditions()
-                send_message("تم فحص الشروط")
+            elif text == "فحص":
+                check_conditions(chat_id)
 
         return "OK", 200
 
