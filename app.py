@@ -12,7 +12,7 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-SYMBOL = "^GSPC"
+SYMBOL = "BTC-USD"
 TIMEFRAME = "5m"
 
 in_trade = False
@@ -78,7 +78,6 @@ def trading_logic():
             avg_volume = data["Volume"].tail(10).mean()
 
             angle = calculate_angle(data)
-
             mode = detect_mode(data)
 
             if not in_trade:
@@ -92,20 +91,20 @@ def trading_logic():
                         direction = "CALL"
                         entry_price = price
                         in_trade = True
-                        send(f"""🟢 CALM MODE CALL
+                        send(f"""🟢 BTC CALM CALL
 
-🎯 {round(price)}
-📐 Angle {round(angle)}°
+🎯 Entry: {round(price,2)}
+📐 Angle: {round(angle)}°
 """)
 
                     elif price < ema50 and price < swing_low and angle >= 30:
                         direction = "PUT"
                         entry_price = price
                         in_trade = True
-                        send(f"""🔴 CALM MODE PUT
+                        send(f"""🔴 BTC CALM PUT
 
-🎯 {round(price)}
-📐 Angle {round(angle)}°
+🎯 Entry: {round(price,2)}
+📐 Angle: {round(angle)}°
 """)
 
                 # ---------- AGGRESSIVE MODE ----------
@@ -119,11 +118,11 @@ def trading_logic():
                         direction = "CALL"
                         entry_price = price
                         in_trade = True
-                        send(f"""🔥 AGGRESSIVE CALL
+                        send(f"""🔥 BTC AGGRESSIVE CALL
 
-🎯 {round(price)}
-📐 {round(angle)}°
-💥 Vol Explosion
+🎯 Entry: {round(price,2)}
+📐 Angle: {round(angle)}°
+💥 Volume Explosion
 """)
 
                     elif (
@@ -134,11 +133,11 @@ def trading_logic():
                         direction = "PUT"
                         entry_price = price
                         in_trade = True
-                        send(f"""🔥 AGGRESSIVE PUT
+                        send(f"""🔥 BTC AGGRESSIVE PUT
 
-🎯 {round(price)}
-📐 {round(angle)}°
-💥 Vol Explosion
+🎯 Entry: {round(price,2)}
+📐 Angle: {round(angle)}°
+💥 Volume Explosion
 """)
 
             else:
@@ -149,11 +148,11 @@ def trading_logic():
                     target = 1.04
 
                 if direction == "CALL" and price >= entry_price * target:
-                    send("🎯 Target Hit")
+                    send("🎯 BTC Target Hit")
                     in_trade = False
 
                 if direction == "PUT" and price <= entry_price * (2 - target):
-                    send("🎯 Target Hit")
+                    send("🎯 BTC Target Hit")
                     in_trade = False
 
             time.sleep(60)
@@ -165,7 +164,7 @@ def trading_logic():
 # ---------------- Server ----------------
 @app.route("/")
 def home():
-    return "Bot Running"
+    return "Bot Running BTC"
 
 def start_thread():
     t = threading.Thread(target=trading_logic)
