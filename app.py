@@ -1,9 +1,10 @@
 import os
 import requests
-import time
 import threading
+import time
 import yfinance as yf
-import numpy as np
+import pandas as pd
+import math
 from flask import Flask
 
 app = Flask(__name__)
@@ -12,74 +13,148 @@ TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 SYMBOL = "^GSPC"
-last_signal = None
+TIMEFRAME = "5m"
 
+in_trade = False
+direction = None
+entry_price = 0
+mode = "CALM"
+
+# ---------------- Telegram ----------------
 def send(msg):
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": msg}
-    )
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
 
-def monitor():
-    global last_signal
-    
+# ---------------- Indicators ----------------
+def calculate_atr(data, period=14):
+    high_low = data["High"] - data["Low"]
+    high_close = abs(data["High"] - data["Close"].shift())
+    low_close = abs(data["Low"] - data["Close"].shift())
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    return tr.rolling(period).mean().iloc[-1]
+
+def calculate_angle(data):
+    y2 = data["Close"].iloc[-1]
+    y1 = data["Close"].iloc[-6]
+    slope = (y2 - y1) / 5
+    return abs(math.degrees(math.atan(slope)))
+
+# ---------------- Market Mode Detection ----------------
+def detect_mode(data):
+    atr = calculate_atr(data)
+    atr_avg = data["High"].sub(data["Low"]).rolling(20).mean().iloc[-1]
+
+    volume = data["Volume"].iloc[-1]
+    avg_volume = data["Volume"].rolling(20).mean().iloc[-1]
+
+    candle_range = data["High"].iloc[-1] - data["Low"].iloc[-1]
+    avg_range = data["High"].sub(data["Low"]).rolling(15).mean().iloc[-1]
+
+    if (
+        atr > atr_avg * 1.5 or
+        volume > avg_volume * 2 or
+        candle_range > avg_range * 1.8
+    ):
+        return "AGGRESSIVE"
+    return "CALM"
+
+# ---------------- Trading Logic ----------------
+def trading_logic():
+    global in_trade, direction, entry_price, mode
+
     while True:
         try:
-            data = yf.download(tickers=SYMBOL, period="1d", interval="5m")
+            data = yf.download(SYMBOL, period="1d", interval=TIMEFRAME)
 
-            if len(data) < 30:
+            if len(data) < 50:
                 time.sleep(60)
                 continue
 
-            close = data["Close"]
+            price = data["Close"].iloc[-1]
+            swing_high = data["High"].tail(15).max()
+            swing_low = data["Low"].tail(15).min()
 
-            # بداية الجلسة
-            session_start_price = close.iloc[0]
-            current_price = close.iloc[-1]
-            bars = len(close)
+            volume = data["Volume"].iloc[-1]
+            avg_volume = data["Volume"].tail(10).mean()
 
-            slope = (current_price - session_start_price) / bars
-            angle = np.degrees(np.arctan(slope))
+            angle = calculate_angle(data)
 
-            ema9 = close.ewm(span=9).mean()
-            ema21 = close.ewm(span=21).mean()
+            mode = detect_mode(data)
 
-            prev9 = ema9.iloc[-2]
-            prev21 = ema21.iloc[-2]
-            curr9 = ema9.iloc[-1]
-            curr21 = ema21.iloc[-1]
+            if not in_trade:
 
-            strike = round(current_price / 5) * 5
+                # ---------- CALM MODE ----------
+                if mode == "CALM":
 
-            # CALL
-            if (
-                prev9 < prev21 and 
-                curr9 > curr21 and 
-                angle >= 45 and
-                last_signal != "CALL"
-            ):
-                last_signal = "CALL"
-                send(f"""📈 SPX CALL
+                    ema50 = data["Close"].ewm(span=50).mean().iloc[-1]
 
-🎯 Strike : {strike}
-💰 Entry : {current_price:.2f}
-📐 Angle : {angle:.1f}°
+                    if price > ema50 and price > swing_high and angle >= 30:
+                        direction = "CALL"
+                        entry_price = price
+                        in_trade = True
+                        send(f"""🟢 CALM MODE CALL
+
+🎯 {round(price)}
+📐 Angle {round(angle)}°
 """)
 
-            # PUT
-            if (
-                prev9 > prev21 and 
-                curr9 < curr21 and 
-                angle <= -45 and
-                last_signal != "PUT"
-            ):
-                last_signal = "PUT"
-                send(f"""📉 SPX PUT
+                    elif price < ema50 and price < swing_low and angle >= 30:
+                        direction = "PUT"
+                        entry_price = price
+                        in_trade = True
+                        send(f"""🔴 CALM MODE PUT
 
-🎯 Strike : {strike}
-💰 Entry : {current_price:.2f}
-📐 Angle : {angle:.1f}°
+🎯 {round(price)}
+📐 Angle {round(angle)}°
 """)
+
+                # ---------- AGGRESSIVE MODE ----------
+                if mode == "AGGRESSIVE":
+
+                    if (
+                        price > swing_high and
+                        volume > avg_volume * 2 and
+                        angle >= 60
+                    ):
+                        direction = "CALL"
+                        entry_price = price
+                        in_trade = True
+                        send(f"""🔥 AGGRESSIVE CALL
+
+🎯 {round(price)}
+📐 {round(angle)}°
+💥 Vol Explosion
+""")
+
+                    elif (
+                        price < swing_low and
+                        volume > avg_volume * 2 and
+                        angle >= 60
+                    ):
+                        direction = "PUT"
+                        entry_price = price
+                        in_trade = True
+                        send(f"""🔥 AGGRESSIVE PUT
+
+🎯 {round(price)}
+📐 {round(angle)}°
+💥 Vol Explosion
+""")
+
+            else:
+                # -------- Trade Management --------
+                if mode == "CALM":
+                    target = 1.02
+                else:
+                    target = 1.04
+
+                if direction == "CALL" and price >= entry_price * target:
+                    send("🎯 Target Hit")
+                    in_trade = False
+
+                if direction == "PUT" and price <= entry_price * (2 - target):
+                    send("🎯 Target Hit")
+                    in_trade = False
 
             time.sleep(60)
 
@@ -87,22 +162,17 @@ def monitor():
             print("Error:", e)
             time.sleep(60)
 
+# ---------------- Server ----------------
 @app.route("/")
 def home():
     return "Bot Running"
 
-# زر اختبار
-@app.route("/test")
-def test_signal():
-    send("""📈 SPX CALL (TEST)
+def start_thread():
+    t = threading.Thread(target=trading_logic)
+    t.daemon = True
+    t.start()
 
-🎯 Strike : 5100
-💰 Entry : 3.00
-📐 Angle : 47°
-""")
-    return "Test Sent"
-
-threading.Thread(target=monitor, daemon=True).start()
+start_thread()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
