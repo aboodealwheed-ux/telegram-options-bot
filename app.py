@@ -1,10 +1,9 @@
 import os
-import requests
-import threading
 import time
-import yfinance as yf
+import threading
+import requests
 import pandas as pd
-import math
+import yfinance as yf
 from flask import Flask
 
 app = Flask(__name__)
@@ -12,148 +11,59 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-SYMBOL = "BTC-USD"
-TIMEFRAME = "5m"
+symbol = "BTC-USD"
+interval = "5m"
 
 in_trade = False
-direction = None
-entry_price = 0
-mode = "CALM"
 
-# ---------------- Telegram ----------------
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
-# ---------------- Indicators ----------------
-def calculate_atr(data, period=14):
-    high_low = data["High"] - data["Low"]
-    high_close = abs(data["High"] - data["Close"].shift())
-    low_close = abs(data["Low"] - data["Close"].shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    return tr.rolling(period).mean().iloc[-1]
+def get_data():
+    df = yf.download(symbol, interval=interval, period="2d")
+    return df
 
-def calculate_angle(data):
-    y2 = data["Close"].iloc[-1]
-    y1 = data["Close"].iloc[-6]
-    slope = (y2 - y1) / 5
-    return abs(math.degrees(math.atan(slope)))
-
-# ---------------- Market Mode Detection ----------------
-def detect_mode(data):
-    atr = calculate_atr(data)
-    atr_avg = data["High"].sub(data["Low"]).rolling(20).mean().iloc[-1]
-
-    volume = data["Volume"].iloc[-1]
-    avg_volume = data["Volume"].rolling(20).mean().iloc[-1]
-
-    candle_range = data["High"].iloc[-1] - data["Low"].iloc[-1]
-    avg_range = data["High"].sub(data["Low"]).rolling(15).mean().iloc[-1]
-
-    if (
-        atr > atr_avg * 1.5 or
-        volume > avg_volume * 2 or
-        candle_range > avg_range * 1.8
-    ):
-        return "AGGRESSIVE"
-    return "CALM"
-
-# ---------------- Trading Logic ----------------
 def trading_logic():
-    global in_trade, direction, entry_price, mode
-
+    global in_trade
     while True:
         try:
-            data = yf.download(SYMBOL, period="1d", interval=TIMEFRAME)
+            df = get_data()
 
-            if len(data) < 50:
-                time.sleep(60)
-                continue
+            df["EMA9"] = df["Close"].ewm(span=9).mean()
+            df["EMA21"] = df["Close"].ewm(span=21).mean()
+            df["Body"] = abs(df["Close"] - df["Open"])
+            df["AvgBody"] = df["Body"].rolling(10).mean()
+            df["AvgVol"] = df["Volume"].rolling(20).mean()
 
-            price = data["Close"].iloc[-1]
-            swing_high = data["High"].tail(15).max()
-            swing_low = data["Low"].tail(15).min()
+            last = df.iloc[-1]
 
-            volume = data["Volume"].iloc[-1]
-            avg_volume = data["Volume"].tail(10).mean()
+            trend_up = last["EMA9"] > last["EMA21"]
+            trend_down = last["EMA9"] < last["EMA21"]
 
-            angle = calculate_angle(data)
-            mode = detect_mode(data)
+            volume_explosion = last["Volume"] >= last["AvgVol"] * 1.8
+            strong_candle = last["Body"] > last["AvgBody"]
+
+            day_high = df["High"].max()
+            day_low = df["Low"].min()
+
+            room_up = last["Close"] < day_high * 0.995
+            room_down = last["Close"] > day_low * 1.005
 
             if not in_trade:
+                if trend_up and volume_explosion and strong_candle and room_up:
+                    in_trade = True
+                    send(f"""🚀 BTC LONG هجومي
+السعر: {last['Close']:.2f}
+حجم انفجار مؤكد
+EMA9 فوق EMA21 👿""")
 
-                # ---------- CALM MODE ----------
-                if mode == "CALM":
-
-                    ema50 = data["Close"].ewm(span=50).mean().iloc[-1]
-
-                    if price > ema50 and price > swing_high and angle >= 30:
-                        direction = "CALL"
-                        entry_price = price
-                        in_trade = True
-                        send(f"""🟢 BTC CALM CALL
-
-🎯 Entry: {round(price,2)}
-📐 Angle: {round(angle)}°
-""")
-
-                    elif price < ema50 and price < swing_low and angle >= 30:
-                        direction = "PUT"
-                        entry_price = price
-                        in_trade = True
-                        send(f"""🔴 BTC CALM PUT
-
-🎯 Entry: {round(price,2)}
-📐 Angle: {round(angle)}°
-""")
-
-                # ---------- AGGRESSIVE MODE ----------
-                if mode == "AGGRESSIVE":
-
-                    if (
-                        price > swing_high and
-                        volume > avg_volume * 2 and
-                        angle >= 60
-                    ):
-                        direction = "CALL"
-                        entry_price = price
-                        in_trade = True
-                        send(f"""🔥 BTC AGGRESSIVE CALL
-
-🎯 Entry: {round(price,2)}
-📐 Angle: {round(angle)}°
-💥 Volume Explosion
-""")
-
-                    elif (
-                        price < swing_low and
-                        volume > avg_volume * 2 and
-                        angle >= 60
-                    ):
-                        direction = "PUT"
-                        entry_price = price
-                        in_trade = True
-                        send(f"""🔥 BTC AGGRESSIVE PUT
-
-🎯 Entry: {round(price,2)}
-📐 Angle: {round(angle)}°
-💥 Volume Explosion
-""")
-
-            else:
-                # -------- Trade Management --------
-                if mode == "CALM":
-                    target = 1.02
-                else:
-                    target = 1.04
-
-                if direction == "CALL" and price >= entry_price * target:
-                    send("🎯 BTC Target Hit")
-                    in_trade = False
-
-                if direction == "PUT" and price <= entry_price * (2 - target):
-                    send("🎯 BTC Target Hit")
-                    in_trade = False
+                elif trend_down and volume_explosion and strong_candle and room_down:
+                    in_trade = True
+                    send(f"""💣 BTC SHORT هجومي
+السعر: {last['Close']:.2f}
+حجم انفجار مؤكد
+EMA9 تحت EMA21 👿""")
 
             time.sleep(60)
 
@@ -161,10 +71,9 @@ def trading_logic():
             print("Error:", e)
             time.sleep(60)
 
-# ---------------- Server ----------------
 @app.route("/")
 def home():
-    return "Bot Running BTC"
+    return "Bot Running"
 
 def start_thread():
     t = threading.Thread(target=trading_logic)
