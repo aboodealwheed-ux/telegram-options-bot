@@ -5,8 +5,8 @@ import os
 import math
 from flask import Flask
 
-TOKEN = "حط_توكنك"
-CHAT_ID = "حط_ايدي_القروب"
+TOKEN = "8028407647:AAF_lwuVMq2l1oPo27MyDesjG27M5-vPhP8"
+CHAT_ID = "-1003790525302"
 
 # =========================
 # ارسال رسالة
