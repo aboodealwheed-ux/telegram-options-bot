@@ -33,7 +33,7 @@ def monitor():
 
             close = data["Close"]
 
-            # ===== بداية الجلسة =====
+            # بداية الجلسة
             session_start_price = close.iloc[0]
             current_price = close.iloc[-1]
             bars = len(close)
@@ -51,7 +51,7 @@ def monitor():
 
             strike = round(current_price / 5) * 5
 
-            # ===== CALL =====
+            # CALL
             if (
                 prev9 < prev21 and 
                 curr9 > curr21 and 
@@ -66,7 +66,7 @@ def monitor():
 📐 Angle : {angle:.1f}°
 """)
 
-            # ===== PUT =====
+            # PUT
             if (
                 prev9 > prev21 and 
                 curr9 < curr21 and 
@@ -90,6 +90,17 @@ def monitor():
 @app.route("/")
 def home():
     return "Bot Running"
+
+# زر اختبار
+@app.route("/test")
+def test_signal():
+    send("""📈 SPX CALL (TEST)
+
+🎯 Strike : 5100
+💰 Entry : 3.00
+📐 Angle : 47°
+""")
+    return "Test Sent"
 
 threading.Thread(target=monitor, daemon=True).start()
 
