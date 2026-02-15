@@ -2,65 +2,76 @@ import os
 import time
 import threading
 import requests
-import pandas as pd
 import yfinance as yf
-from flask import Flask, request
+from flask import Flask
 
 app = Flask(__name__)
 
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-symbol = "BTC-USD"
-interval = "5m"
+# ==============================
+# ارسال رسالة تيليجرام
+# ==============================
+def send(msg):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
 
-# -------- Telegram --------
-def send(text):
-    requests.post(
-        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-        data={"chat_id": CHAT_ID, "text": text}
-    )
+# ==============================
+# الاستراتيجية
+# ==============================
+in_trade = False
+entry_price = 0
+last_profit_alert = 0
 
-# -------- Data --------
-def get_data():
-    df = yf.download(symbol, interval=interval, period="2d")
-    return df
-
-# -------- Trading Logic (More Signals) --------
 def trading_logic():
+    global in_trade, entry_price, last_profit_alert
+
     while True:
         try:
-            df = get_data()
-
-            if len(df) < 30:
+            data = yf.download("BTC-USD", period="1d", interval="5m")
+            
+            if len(data) < 30:
                 time.sleep(60)
                 continue
 
-            df["EMA9"] = df["Close"].ewm(span=9).mean()
-            df["EMA21"] = df["Close"].ewm(span=21).mean()
-            df["Body"] = abs(df["Close"] - df["Open"])
-            df["AvgBody"] = df["Body"].rolling(10).mean()
-            df["AvgVol"] = df["Volume"].rolling(20).mean()
+            close = data["Close"]
 
-            last = df.iloc[-1]
+            ema9 = close.ewm(span=9).mean().iloc[-1]
+            ema21 = close.ewm(span=21).mean().iloc[-1]
+            current_price = close.iloc[-1]
 
-            trend_up = last["EMA9"] > last["EMA21"]
-            trend_down = last["EMA9"] < last["EMA21"]
+            print("Price:", current_price, "EMA9:", ema9)
 
-            volume_explosion = last["Volume"] >= last["AvgVol"] * 1.2
-            strong_candle = last["Body"] > last["AvgBody"] * 0.8
+            # ==========================
+            # دخول تجريبي للاختبار
+            # ==========================
+            if not in_trade and current_price > ema9:
 
-            if trend_up and volume_explosion and strong_candle:
-                send(f"""🚀 BTC LONG هجومي
-السعر: {last['Close']:.2f}
-حجم مرتفع
-EMA9 فوق EMA21 👿""")
+                in_trade = True
+                entry_price = current_price
+                last_profit_alert = 0
 
-            elif trend_down and volume_explosion and strong_candle:
-                send(f"""💣 BTC SHORT هجومي
-السعر: {last['Close']:.2f}
-حجم مرتفع
-EMA9 تحت EMA21 👿""")
+                send(f"""
+🚀 BTC TEST ENTRY
+
+💰 Entry : {entry_price:.2f}
+📊 EMA9 : {ema9:.2f}
+📊 EMA21 : {ema21:.2f}
+                """)
+
+            # ==========================
+            # تنبيه أرباح كل 100$
+            # ==========================
+            if in_trade:
+                profit = current_price - entry_price
+
+                if profit >= last_profit_alert + 100:
+                    last_profit_alert += 100
+                    send(f"💵 Profit Reached {int(last_profit_alert)}$")
 
             time.sleep(60)
 
@@ -68,24 +79,9 @@ EMA9 تحت EMA21 👿""")
             print("Error:", e)
             time.sleep(60)
 
-# -------- Webhook (يرد في الخاص فقط) --------
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json()
-
-    if "message" in data:
-        chat = data["message"]["chat"]
-        chat_id = chat["id"]
-        chat_type = chat["type"]
-
-        if chat_type == "private":
-            requests.post(
-                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                data={"chat_id": chat_id, "text": "البوت يعمل ويرسل إشعارات في القروب 👿🔥"}
-            )
-
-    return "ok"
-
+# ==============================
+# تشغيل السيرفر
+# ==============================
 @app.route("/")
 def home():
     return "Bot Running BTC Aggressive"
