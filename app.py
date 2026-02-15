@@ -6,62 +6,63 @@ from flask import Flask
 
 app = Flask(__name__)
 
-TOKEN = os.getenv("TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+TOKEN = os.environ.get("TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
-# ---------------- ارسال رسالة ----------------
+symbol = "%5EGSPC"  # SPX
+in_trade = False
+
 def send(msg):
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg}
-        )
-    except:
-        pass
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
 
-# ---------------- جلب سعر SPX من Yahoo ----------------
 def get_spx_price():
-    try:
-        url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-        return float(data["quoteResponse"]["result"][0]["regularMarketPrice"])
-    except:
-        send("❌ خطأ جلب سعر SPX")
-        return None
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
+    r = requests.get(url)
+    data = r.json()
+    return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
 
-# ---------------- منطق بسيط تجريبي ----------------
-def bot_logic():
+def trading_logic():
+    global in_trade
+
     send("🚀 تم تشغيل بوت SPX")
 
-    last_signal = None
+    last_price = None
 
     while True:
-        price = get_spx_price()
+        try:
+            price = get_spx_price()
 
-        if price:
-            send(f"📊 سعر SPX الحالي: {price}")
+            if last_price is not None:
 
-            # مثال تجريبي
-            if price > 7000 and last_signal != "SELL":
-                send("🔴 إشارة بيع SPX")
-                last_signal = "SELL"
+                # كسر صاعد قوي
+                if price > last_price + 5 and not in_trade:
+                    send(f"🔥 SPX اختراق صاعد\nالسعر: {price}")
+                    in_trade = True
 
-            elif price < 6000 and last_signal != "BUY":
-                send("🟢 إشارة شراء SPX")
-                last_signal = "BUY"
+                # كسر هابط قوي
+                if price < last_price - 5 and in_trade:
+                    send(f"❌ SPX انعكاس هابط\nالسعر: {price}")
+                    in_trade = False
 
-        time.sleep(60)
+            last_price = price
+            time.sleep(30)
 
-# ---------------- تشغيل ----------------
-def start_thread():
-    t = threading.Thread(target=bot_logic)
-    t.daemon = True
-    t.start()
+        except Exception as e:
+            print("Error:", e)
+            time.sleep(10)
 
 @app.route("/")
 def home():
-    return "Bot Running SPX"
+    return "SPX Bot Running"
+
+def start_thread():
+    t = threading.Thread(target=trading_logic)
+    t.daemon = True
+    t.start()
 
 start_thread()
 
