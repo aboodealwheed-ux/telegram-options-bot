@@ -3,4 +3,3 @@ requests
 yfinance
 gunicorn
 pandas
-numpy
