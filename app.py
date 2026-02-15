@@ -4,7 +4,7 @@ import threading
 import requests
 import pandas as pd
 import yfinance as yf
-from flask import Flask
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -44,32 +44,33 @@ def trading_logic():
             volume_explosion = last["Volume"] >= last["AvgVol"] * 1.8
             strong_candle = last["Body"] > last["AvgBody"]
 
-            day_high = df["High"].max()
-            day_low = df["Low"].min()
-
-            room_up = last["Close"] < day_high * 0.995
-            room_down = last["Close"] > day_low * 1.005
-
             if not in_trade:
-                if trend_up and volume_explosion and strong_candle and room_up:
+                if trend_up and volume_explosion and strong_candle:
                     in_trade = True
-                    send(f"""🚀 BTC LONG هجومي
-السعر: {last['Close']:.2f}
-حجم انفجار مؤكد
-EMA9 فوق EMA21 👿""")
+                    send(f"🚀 BTC LONG هجومي\nالسعر: {last['Close']:.2f}")
 
-                elif trend_down and volume_explosion and strong_candle and room_down:
+                elif trend_down and volume_explosion and strong_candle:
                     in_trade = True
-                    send(f"""💣 BTC SHORT هجومي
-السعر: {last['Close']:.2f}
-حجم انفجار مؤكد
-EMA9 تحت EMA21 👿""")
+                    send(f"💣 BTC SHORT هجومي\nالسعر: {last['Close']:.2f}")
 
             time.sleep(60)
 
         except Exception as e:
             print("Error:", e)
             time.sleep(60)
+
+# هذا الجزء الجديد 👇 يستقبل رسائل
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={"chat_id": chat_id, "text": "جاهز للعمل 👿"}
+        )
+    return "ok"
 
 @app.route("/")
 def home():
