@@ -14,21 +14,27 @@ CHAT_ID = os.environ.get("CHAT_ID")
 symbol = "BTC-USD"
 interval = "5m"
 
-in_trade = False
+# -------- Telegram --------
+def send(text):
+    requests.post(
+        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+        data={"chat_id": CHAT_ID, "text": text}
+    )
 
-def send(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
-
+# -------- Data --------
 def get_data():
     df = yf.download(symbol, interval=interval, period="2d")
     return df
 
+# -------- Trading Logic (More Signals) --------
 def trading_logic():
-    global in_trade
     while True:
         try:
             df = get_data()
+
+            if len(df) < 30:
+                time.sleep(60)
+                continue
 
             df["EMA9"] = df["Close"].ewm(span=9).mean()
             df["EMA21"] = df["Close"].ewm(span=21).mean()
@@ -41,17 +47,20 @@ def trading_logic():
             trend_up = last["EMA9"] > last["EMA21"]
             trend_down = last["EMA9"] < last["EMA21"]
 
-            volume_explosion = last["Volume"] >= last["AvgVol"] * 1.8
-            strong_candle = last["Body"] > last["AvgBody"]
+            volume_explosion = last["Volume"] >= last["AvgVol"] * 1.2
+            strong_candle = last["Body"] > last["AvgBody"] * 0.8
 
-            if not in_trade:
-                if trend_up and volume_explosion and strong_candle:
-                    in_trade = True
-                    send(f"🚀 BTC LONG هجومي\nالسعر: {last['Close']:.2f}")
+            if trend_up and volume_explosion and strong_candle:
+                send(f"""🚀 BTC LONG هجومي
+السعر: {last['Close']:.2f}
+حجم مرتفع
+EMA9 فوق EMA21 👿""")
 
-                elif trend_down and volume_explosion and strong_candle:
-                    in_trade = True
-                    send(f"💣 BTC SHORT هجومي\nالسعر: {last['Close']:.2f}")
+            elif trend_down and volume_explosion and strong_candle:
+                send(f"""💣 BTC SHORT هجومي
+السعر: {last['Close']:.2f}
+حجم مرتفع
+EMA9 تحت EMA21 👿""")
 
             time.sleep(60)
 
@@ -59,22 +68,27 @@ def trading_logic():
             print("Error:", e)
             time.sleep(60)
 
-# هذا الجزء الجديد 👇 يستقبل رسائل
+# -------- Webhook (يرد في الخاص فقط) --------
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json()
+
     if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data={"chat_id": chat_id, "text": "جاهز للعمل 👿"}
-        )
+        chat = data["message"]["chat"]
+        chat_id = chat["id"]
+        chat_type = chat["type"]
+
+        if chat_type == "private":
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                data={"chat_id": chat_id, "text": "البوت يعمل ويرسل إشعارات في القروب 👿🔥"}
+            )
+
     return "ok"
 
 @app.route("/")
 def home():
-    return "Bot Running"
+    return "Bot Running BTC Aggressive"
 
 def start_thread():
     t = threading.Thread(target=trading_logic)
