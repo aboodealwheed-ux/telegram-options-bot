@@ -1,17 +1,18 @@
-import os
+import requests
 import time
 import threading
-import requests
+import os
 from flask import Flask
 
-app = Flask(__name__)
+# =========================
+# بياناتك
+# =========================
+TOKEN = "حط_توكنك_هنا"
+CHAT_ID = "حط_ايدي_القروب_هنا"
 
-TOKEN = os.environ.get("TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-
-# =====================
-# ارسال رسالة
-# =====================
+# =========================
+# دالة ارسال رسالة
+# =========================
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     data = {
@@ -20,72 +21,39 @@ def send(msg):
     }
     requests.post(url, data=data)
 
-# =====================
-# جلب السعر من Binance
-# =====================
+# =========================
+# جلب سعر BTC من Binance
+# =========================
 def get_price():
-    try:
-        r = requests.get(
-            "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
-            timeout=5
-        )
-        return float(r.json()["price"])
-    except:
-        return None
+    url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+    r = requests.get(url).json()
+    return float(r["price"])
 
-# =====================
-# مراقبة حركة 1%
-# =====================
+# =========================
+# منطق الاختبار
+# =========================
 def trading_logic():
-
-    base_price = None
-    last_direction = None
+    send("🚀 تم تشغيل بوت اختبار BTC")
 
     while True:
         try:
             price = get_price()
-
-            if price is None:
-                time.sleep(15)
-                continue
-
-            # أول سعر كبداية
-            if base_price is None:
-                base_price = price
-                send(f"🤖 بدأ المراقبة\nالسعر الابتدائي: {price}")
-                time.sleep(15)
-                continue
-
-            change_percent = ((price - base_price) / base_price) * 100
-
-            # حركة صعود 1%
-            if change_percent >= 1 and last_direction != "UP":
-                send(f"🚀 صعود 1%\nالسعر: {price}\nالتغير: {change_percent:.2f}%")
-                base_price = price
-                last_direction = "UP"
-
-            # حركة نزول 1%
-            elif change_percent <= -1 and last_direction != "DOWN":
-                send(f"🔻 نزول 1%\nالسعر: {price}\nالتغير: {change_percent:.2f}%")
-                base_price = price
-                last_direction = "DOWN"
-
-            time.sleep(15)
+            send(f"💰 السعر الحالي BTC: {price}")
+            time.sleep(30)
 
         except Exception as e:
             print("Error:", e)
-            time.sleep(15)
+            time.sleep(30)
 
-# =====================
-# صفحة الموقع
-# =====================
+# =========================
+# Flask لتشغيل Render
+# =========================
+app = Flask(__name__)
+
 @app.route("/")
 def home():
-    return "Bot Running 1% Monitor"
+    return "Bot Running BTC Test"
 
-# =====================
-# تشغيل الثريد
-# =====================
 def start_thread():
     t = threading.Thread(target=trading_logic)
     t.daemon = True
