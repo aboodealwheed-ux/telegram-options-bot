@@ -2,7 +2,6 @@ import os
 import time
 import threading
 import requests
-import yfinance as yf
 from flask import Flask
 
 app = Flask(__name__)
@@ -10,82 +9,83 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-# ==============================
-# ارسال رسالة تيليجرام
-# ==============================
+# =====================
+# ارسال رسالة
+# =====================
 def send(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={
+    data = {
         "chat_id": CHAT_ID,
         "text": msg
-    })
+    }
+    requests.post(url, data=data)
 
-# ==============================
-# الاستراتيجية
-# ==============================
-in_trade = False
-entry_price = 0
-last_profit_alert = 0
+# =====================
+# جلب السعر من Binance
+# =====================
+def get_price():
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+            timeout=5
+        )
+        return float(r.json()["price"])
+    except:
+        return None
 
+# =====================
+# مراقبة حركة 1%
+# =====================
 def trading_logic():
-    global in_trade, entry_price, last_profit_alert
+
+    base_price = None
+    last_direction = None
 
     while True:
         try:
-            data = yf.download("BTC-USD", period="1d", interval="5m")
-            
-            if len(data) < 30:
-                time.sleep(60)
+            price = get_price()
+
+            if price is None:
+                time.sleep(15)
                 continue
 
-            close = data["Close"]
+            # أول سعر كبداية
+            if base_price is None:
+                base_price = price
+                send(f"🤖 بدأ المراقبة\nالسعر الابتدائي: {price}")
+                time.sleep(15)
+                continue
 
-            ema9 = close.ewm(span=9).mean().iloc[-1]
-            ema21 = close.ewm(span=21).mean().iloc[-1]
-            current_price = close.iloc[-1]
+            change_percent = ((price - base_price) / base_price) * 100
 
-            print("Price:", current_price, "EMA9:", ema9)
+            # حركة صعود 1%
+            if change_percent >= 1 and last_direction != "UP":
+                send(f"🚀 صعود 1%\nالسعر: {price}\nالتغير: {change_percent:.2f}%")
+                base_price = price
+                last_direction = "UP"
 
-            # ==========================
-            # دخول تجريبي للاختبار
-            # ==========================
-            if not in_trade and current_price > ema9:
+            # حركة نزول 1%
+            elif change_percent <= -1 and last_direction != "DOWN":
+                send(f"🔻 نزول 1%\nالسعر: {price}\nالتغير: {change_percent:.2f}%")
+                base_price = price
+                last_direction = "DOWN"
 
-                in_trade = True
-                entry_price = current_price
-                last_profit_alert = 0
-
-                send(f"""
-🚀 BTC TEST ENTRY
-
-💰 Entry : {entry_price:.2f}
-📊 EMA9 : {ema9:.2f}
-📊 EMA21 : {ema21:.2f}
-                """)
-
-            # ==========================
-            # تنبيه أرباح كل 100$
-            # ==========================
-            if in_trade:
-                profit = current_price - entry_price
-
-                if profit >= last_profit_alert + 100:
-                    last_profit_alert += 100
-                    send(f"💵 Profit Reached {int(last_profit_alert)}$")
-
-            time.sleep(60)
+            time.sleep(15)
 
         except Exception as e:
             print("Error:", e)
-            time.sleep(60)
+            time.sleep(15)
 
-# ==============================
-# تشغيل السيرفر
-# ==============================
+# =====================
+# صفحة الموقع
+# =====================
 @app.route("/")
 def home():
-    return "Bot Running BTC Aggressive"
+    return "Bot Running 1% Monitor"
 
+# =====================
+# تشغيل الثريد
+# =====================
 def start_thread():
     t = threading.Thread(target=trading_logic)
     t.daemon = True
