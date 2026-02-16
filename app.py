@@ -11,8 +11,6 @@ CHAT_ID = os.environ.get("CHAT_ID")
 
 symbol = "%5EGSPC"  # SPX
 
-in_position = None
-
 # -------- ارسال رسالة --------
 def send(msg):
     try:
@@ -23,68 +21,39 @@ def send(msg):
     except:
         pass
 
-# -------- جلب بيانات 1 دقيقة --------
-def get_data():
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1m&range=1d"
-    r = requests.get(url, timeout=10)
-    data = r.json()
+# -------- جلب سعر SPX --------
+def get_spx_price():
+    try:
+        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        return data["quoteResponse"]["result"][0]["regularMarketPrice"]
+    except:
+        return None
 
-    closes = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
-    closes = [c for c in closes if c is not None]
-    return closes
-
-# -------- حساب EMA --------
-def ema(values, period):
-    k = 2 / (period + 1)
-    ema_values = [values[0]]
-    for price in values[1:]:
-        ema_values.append(price * k + ema_values[-1] * (1 - k))
-    return ema_values
-
-# -------- منطق التداول --------
-def trading_logic():
-    global in_position
-
-    send("🚀 تم تشغيل بوت US500")
+# -------- حلقة المراقبة --------
+def bot_logic():
+    send("🚀 تم تشغيل بوت سعر US500")
 
     while True:
-        try:
-            closes = get_data()
+        price = get_spx_price()
 
-            if len(closes) < 30:
-                time.sleep(30)
-                continue
+        if price:
+            send(f"📊 سعر US500 الحالي: {price}")
+        else:
+            send("❌ لم يتم جلب السعر")
 
-            ema9 = ema(closes, 9)
-            ema21 = ema(closes, 21)
-
-            current_price = closes[-1]
-
-            # تقاطع صاعد
-            if ema9[-1] > ema21[-1] and in_position != "BUY":
-                send(f"🔥 BUY US500\nالسعر: {current_price}")
-                in_position = "BUY"
-
-            # تقاطع هابط
-            elif ema9[-1] < ema21[-1] and in_position != "SELL":
-                send(f"🔻 SELL US500\nالسعر: {current_price}")
-                in_position = "SELL"
-
-            time.sleep(60)
-
-        except Exception as e:
-            print("Error:", e)
-            time.sleep(30)
+        time.sleep(60)
 
 # -------- تشغيل --------
 def start_thread():
-    t = threading.Thread(target=trading_logic)
+    t = threading.Thread(target=bot_logic)
     t.daemon = True
     t.start()
 
 @app.route("/")
 def home():
-    return "US500 Bot Running"
+    return "US500 Price Bot Running"
 
 start_thread()
 
