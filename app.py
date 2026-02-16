@@ -9,9 +9,8 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-symbol = "%5EGSPC"  # SPX
+symbol = "ES=F"  # عقود S&P500 الآجلة
 
-# -------- ارسال رسالة --------
 def send(msg):
     try:
         requests.post(
@@ -21,31 +20,31 @@ def send(msg):
     except:
         pass
 
-# -------- جلب سعر SPX --------
-def get_spx_price():
+def get_price():
     try:
         url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
-        r = requests.get(url, timeout=10)
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        r = requests.get(url, headers=headers, timeout=10)
         data = r.json()
         return data["quoteResponse"]["result"][0]["regularMarketPrice"]
-    except:
+    except Exception as e:
         return None
 
-# -------- حلقة المراقبة --------
 def bot_logic():
-    send("🚀 تم تشغيل بوت سعر US500")
+    send("🚀 تم تشغيل بوت سعر US500 (ES)")
 
     while True:
-        price = get_spx_price()
+        price = get_price()
 
         if price:
             send(f"📊 سعر US500 الحالي: {price}")
         else:
-            send("❌ لم يتم جلب السعر")
+            send("❌ فشل جلب السعر")
 
         time.sleep(60)
 
-# -------- تشغيل --------
 def start_thread():
     t = threading.Thread(target=bot_logic)
     t.daemon = True
