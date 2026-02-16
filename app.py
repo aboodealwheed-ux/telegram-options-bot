@@ -9,7 +9,7 @@ app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-API_KEY = "YOUR_API_KEY"  c798ab1853c84eeca77418b19dadc54d
+API_KEY = "c798ab1853c84eeca77418b19dadc54d"
 symbol = "SPX"
 
 def send(msg):
@@ -26,18 +26,22 @@ def get_price():
         url = f"https://api.twelvedata.com/price?symbol={symbol}&apikey={API_KEY}"
         r = requests.get(url, timeout=10)
         data = r.json()
-        return float(data["price"])
+
+        if "price" in data:
+            return float(data["price"])
+        else:
+            return None
     except:
         return None
 
 def bot_logic():
-    send("🚀 تم تشغيل بوت US500")
+    send("🚀 تم تشغيل بوت سعر SPX")
 
     while True:
         price = get_price()
 
         if price:
-            send(f"📊 سعر US500 الحالي: {price}")
+            send(f"📊 سعر SPX الحالي: {price}")
         else:
             send("❌ فشل جلب السعر")
 
@@ -50,7 +54,7 @@ def start_thread():
 
 @app.route("/")
 def home():
-    return "US500 Bot Running"
+    return "SPX Bot Running"
 
 start_thread()
 
